@@ -1,6 +1,6 @@
 # GFileMux
 
-**GFileMux** is a lightweight, high-performance Golang library for handling multipart file uploads, inspired by Multer. It provides flexible storage options, middleware-style file handling, and efficient file processing.
+**GFileMux** is a fast, lightweight Go package for handling multipart file uploads. Inspired by Multer, it offers flexible storage options, middleware-style handling, and seamless processing with minimal overhead. Compatible with any Go HTTP framework, GFileMux simplifies file uploads for your web apps.
 
 ## Features  
 ✅ **Efficient File Parsing** – Handles multipart/form-data seamlessly.  
