@@ -105,23 +105,23 @@ func main() {
 ## Configuration
 You can configure GFileMux with various options. Here is an example configuration:
 ```go
-    config := GFileMux.New(
-		GFileMux.WithMaxFileSize(10<<20), // Limit file size to 10MB
-		GFileMux.WithValidationFunc(
-			GFileMux.ChainValidators(GFileMux.ValidateMimeType("image/jpeg", "image/png"),
-				func(file GFileMux.File) error {
-					// Add custom validation logic here if necessary
-                    // Alternatively, you can remove the ChainValidators and use just the MimeTypeValidator
-                    // or implement only your custom validation function if preferred
-					return nil
-				})),
-		GFileMux.WithNameFuncGenerator(func(originalFileName string) string {
-			// Generate a new unique file name using UUID and original file extension
-			ext := getFileExtension(originalFileName)
-			return fmt.Sprintf("%s.%s", uuid.NewString(), ext)
-		}),
-		GFileMux.WithStorage(disk), // Use disk storage
-	)
+config := GFileMux.New(
+    GFileMux.WithMaxFileSize(10<<20), // Limit file size to 10MB
+    GFileMux.WithValidationFunc(
+        GFileMux.ChainValidators(GFileMux.ValidateMimeType("image/jpeg", "image/png"),
+            func(file GFileMux.File) error {
+                // Add custom validation logic here if necessary
+                // Alternatively, you can remove the ChainValidators and use just the MimeTypeValidator
+                // or implement only your custom validation function if preferred
+                return nil
+            })),
+    GFileMux.WithNameFuncGenerator(func(originalFileName string) string {
+        // Generate a new unique file name using UUID and original file extension
+        ext := getFileExtension(originalFileName)
+        return fmt.Sprintf("%s.%s", uuid.NewString(), ext)
+    }),
+    GFileMux.WithStorage(disk), // Use disk storage
+)
 ```
 
 ## Contributing 🤝
