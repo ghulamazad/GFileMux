@@ -105,7 +105,7 @@ func main() {
 ## Configuration
 You can configure GFileMux with various options. Here is an example configuration:
 ```go
-config := handler, err := GFileMux.New(
+    config := GFileMux.New(
 		GFileMux.WithMaxFileSize(10<<20), // Limit file size to 10MB
 		GFileMux.WithValidationFunc(
 			GFileMux.ChainValidators(GFileMux.ValidateMimeType("image/jpeg", "image/png"),
