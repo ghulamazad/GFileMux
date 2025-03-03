@@ -2,9 +2,8 @@ package GFileMux
 
 import (
 	"context"
+	"errors"
 	"net/http"
-
-	GFileMuxErrors "github.com/ghulamazad/GFileMux/internal/errors"
 )
 
 // fileContextKey is the key type used to store files in context.
@@ -49,7 +48,7 @@ func getFilesFromContext(ctx context.Context) Files {
 func GetUploadedFilesFromContext(r *http.Request) (Files, error) {
 	files := getFilesFromContext(r.Context())
 	if len(files) == 0 {
-		return nil, GFileMuxErrors.ErrFileNotUploaded
+		return nil, errors.New("no files were uploaded in the request")
 	}
 	return files, nil
 }
@@ -58,7 +57,7 @@ func GetUploadedFilesFromContext(r *http.Request) (Files, error) {
 func GetFilesByFieldFromContext(r *http.Request, key string) ([]File, error) {
 	files := getFilesFromContext(r.Context())
 	if len(files) == 0 {
-		return nil, GFileMuxErrors.ErrFieldFilesMissing
+		return nil, errors.New("no files found for the specified field key")
 	}
 	return files[key], nil
 }

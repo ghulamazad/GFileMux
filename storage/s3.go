@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -13,7 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/ghulamazad/GFileMux"
-	GFileMuxErrors "github.com/ghulamazad/GFileMux/internal/errors"
 	"github.com/ghulamazad/GFileMux/utils"
 )
 
@@ -68,7 +68,7 @@ func NewS3FromClient(client *s3.Client, options S3Options) (*S3Store, error) {
 func (s *S3Store) Upload(ctx context.Context, r io.Reader, options GFileMux.UploadFileOptions) (*GFileMux.UploadedFileMetadata, error) {
 	// Ensure the S3 bucket is valid
 	if len(strings.TrimSpace(options.Bucket)) == 0 {
-		return nil, GFileMuxErrors.ErrBucketRequired
+		return nil, errors.New("please provide a valid S3 bucket")
 	}
 
 	// Create a buffer to store the contents of the file
@@ -116,7 +116,7 @@ func (s *S3Store) Path(ctx context.Context, options GFileMux.PathOptions) (strin
 		})
 
 		if err != nil {
-			return "", GFileMuxErrors.ErrCouldNotGetBucketLocation(err)
+			return "", fmt.Errorf("failed to get bucket location: %w", err)
 		}
 
 		// Default to "us-east-1" if no location is provided
@@ -139,7 +139,7 @@ func (s *S3Store) Path(ctx context.Context, options GFileMux.PathOptions) (strin
 	}, s3.WithPresignExpires(options.ExpirationTime))
 
 	if err != nil {
-		return "", GFileMuxErrors.ErrCouldNotGeneratePresignedURL(err)
+		return "", fmt.Errorf("failed to generate presigned URL: %w", err)
 	}
 
 	return presignRequest.URL, nil

@@ -2,10 +2,11 @@ package GFileMux
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
-	GFileMuxErrors "github.com/ghulamazad/GFileMux/internal/errors"
 	"github.com/ghulamazad/GFileMux/utils"
 	"golang.org/x/sync/errgroup"
 )
@@ -60,7 +61,7 @@ func New(options ...GFileMuxOption) (*GFileMux, error) {
 	}
 
 	if handler.storage == nil {
-		return nil, GFileMuxErrors.ErrStorageRequired
+		return nil, errors.New("a storage backend must be provided")
 	}
 
 	return handler, nil
@@ -89,7 +90,7 @@ func (gfm *GFileMux) Upload(bucket string, keys ...string) func(next http.Handle
 			err := r.ParseMultipartForm(gfm.maxSize)
 			if err != nil {
 				if strings.Contains(err.Error(), "request body too large") {
-					gfm.uploadErrorHandler(GFileMuxErrors.ErrFileSizeExceeded(gfm.maxSize)).ServeHTTP(w, r)
+					gfm.uploadErrorHandler(fmt.Errorf("file size exceeded the limit of %d bytes", gfm.maxSize)).ServeHTTP(w, r)
 					return
 				}
 				gfm.uploadErrorHandler(err).ServeHTTP(w, r)
@@ -114,7 +115,7 @@ func (gfm *GFileMux) Upload(bucket string, keys ...string) func(next http.Handle
 						if gfm.ignoreNonExistentKeys {
 							return nil
 						}
-						return GFileMuxErrors.ErrFilesNotFoundInKey(key)
+						return fmt.Errorf("files could not be found in key (%s) from the HTTP request", key)
 					}
 
 					uploadedFiles[key] = make([]File, 0, len(fileHeaders))
@@ -123,7 +124,7 @@ func (gfm *GFileMux) Upload(bucket string, keys ...string) func(next http.Handle
 						// Open the file and handle the file metadata
 						f, err := header.Open()
 						if err != nil {
-							return GFileMuxErrors.ErrCouldNotOpenFile(key, err)
+							return fmt.Errorf("could not open file for key (%s): %v", key, err)
 						}
 						defer f.Close()
 
@@ -132,7 +133,7 @@ func (gfm *GFileMux) Upload(bucket string, keys ...string) func(next http.Handle
 						// Fetch MIME type of the uploaded file
 						mimeType, err := utils.FetchContentType(f)
 						if err != nil {
-							return GFileMuxErrors.ErrInvalidMimeType(key, err)
+							return fmt.Errorf("%s has an invalid MIME type: %v", key, err)
 						}
 
 						fileSize := header.Size
@@ -148,7 +149,7 @@ func (gfm *GFileMux) Upload(bucket string, keys ...string) func(next http.Handle
 
 						// Validate file data
 						if err := gfm.fileValidator(fileData); err != nil {
-							return GFileMuxErrors.ErrValidationFailed(key, err)
+							return fmt.Errorf("validation failed for (%s): %v", key, err)
 						}
 
 						// Upload file to storage
@@ -157,7 +158,7 @@ func (gfm *GFileMux) Upload(bucket string, keys ...string) func(next http.Handle
 							Bucket:   bucket,
 						})
 						if err != nil {
-							return GFileMuxErrors.ErrCouldNotUploadFile(key, err)
+							return fmt.Errorf("could not upload file to storage (%s): %v", key, err)
 						}
 
 						// Add metadata to file data

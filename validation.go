@@ -1,9 +1,8 @@
 package GFileMux
 
 import (
+	"fmt"
 	"strings"
-
-	GFileMuxErrors "github.com/ghulamazad/GFileMux/internal/errors"
 )
 
 // ValidateMimeType returns a FileValidatorFunc that checks if a file's MIME type
@@ -19,7 +18,8 @@ func ValidateMimeType(validMimeTypes ...string) FileValidatorFunc {
 				return nil
 			}
 		}
-		return GFileMuxErrors.ErrUnsupportedMimeType(file.MimeType)
+
+		return fmt.Errorf("unsupported MIME type uploaded: %s", file.MimeType)
 	}
 }
 
