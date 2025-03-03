@@ -40,9 +40,9 @@ func TestUpload(t *testing.T) {
 	handler, err := New(
 		WithStorage(mockStorage),
 		WithMaxFileSize(10<<20),
-		WithValidationFunc(DefaultFileValidator),
-		WithNameFuncGenerator(DefaultFileNameGeneratorFunc),
-		WithErrorResponseHandler(DefaultUploadErrorHandlerFunc),
+		WithFileValidatorFunc(DefaultFileValidator),
+		WithFileNameGeneratorFunc(DefaultFileNameGeneratorFunc),
+		WithUploadErrorHandlerFunc(DefaultUploadErrorHandlerFunc),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create handler: %v", err)

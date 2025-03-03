@@ -22,10 +22,10 @@ func main() {
 	// Create a file handler with desired configurations
 	handler, err := GFileMux.New(
 		GFileMux.WithMaxFileSize(10<<20), // Limit file size to 10MB
-		GFileMux.WithValidationFunc(
+		GFileMux.WithFileValidatorFunc(
 			GFileMux.ChainValidators(GFileMux.ValidateMimeType("image/jpeg", "image/png")),
 		),
-		GFileMux.WithNameFuncGenerator(func(originalFileName string) string {
+		GFileMux.WithFileNameGeneratorFunc(func(originalFileName string) string {
 			// Generate a new unique file name using UUID and original file extension
 			ext := getFileExtension(originalFileName)
 			return fmt.Sprintf("%s.%s", uuid.NewString(), ext)

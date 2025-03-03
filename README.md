@@ -21,11 +21,15 @@ Here is a quick example to get you started with GFileMux:
 package main
 
 import (
-    "fmt"
-    "log"
-    "net/http"
-    "github.com/ghulamazad/GFileMux"
-    "github.com/ghulamazad/GFileMux/storage"
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"strings"
+
+	"github.com/ghulamazad/GFileMux"
+	"github.com/ghulamazad/GFileMux/storage"
+	"github.com/google/uuid"
 )
 
 func main() {
@@ -38,16 +42,16 @@ func main() {
 	// Create a file handler with desired configurations
 	handler, err := GFileMux.New(
 		GFileMux.WithMaxFileSize(10<<20), // Limit file size to 10MB
-		GFileMux.WithValidationFunc(
+		GFileMux.WithFileValidatorFunc(
 			GFileMux.ChainValidators(GFileMux.ValidateMimeType("image/jpeg", "image/png")),
 		),
-		GFileMux.WithNameFuncGenerator(func(originalFileName string) string {
+		GFileMux.WithFileNameGeneratorFunc(func(originalFileName string) string {
 			// Generate a new unique file name using UUID and original file extension
-            parts := strings.Split(fileName, ".")
+			parts := strings.Split(originalFileName, ".")
 			ext := parts[len(parts)-1]
 			return fmt.Sprintf("%s.%s", uuid.NewString(), ext)
 		}),
-		GFileMux.WithStorage(storage.NewMemoryStorage()), // Use memory storage
+		GFileMux.WithStorage(disk), // Use disk storage
 	)
 	if err != nil {
 		log.Fatalf("Error initializing file handler: %v", err)
@@ -107,7 +111,7 @@ You can configure GFileMux with various options. Here is an example configuratio
 ```go
 config := GFileMux.New(
     GFileMux.WithMaxFileSize(10<<20), // Limit file size to 10MB
-    GFileMux.WithValidationFunc(
+    GFileMux.WithFileValidatorFunc(
         GFileMux.ChainValidators(GFileMux.ValidateMimeType("image/jpeg", "image/png"),
             func(file GFileMux.File) error {
                 // Add custom validation logic here if necessary
@@ -115,12 +119,13 @@ config := GFileMux.New(
                 // or implement only your custom validation function if preferred
                 return nil
             })),
-    GFileMux.WithNameFuncGenerator(func(originalFileName string) string {
+    GFileMux.WithFileNameGeneratorFunc(func(originalFileName string) string {
         // Generate a new unique file name using UUID and original file extension
-        ext := getFileExtension(originalFileName)
-        return fmt.Sprintf("%s.%s", uuid.NewString(), ext)
+        parts := strings.Split(originalFileName, ".")
+		ext := parts[len(parts)-1]
+		return fmt.Sprintf("%s.%s", uuid.NewString(), ext)
     }),
-    GFileMux.WithStorage(disk), // Use disk storage
+    GFileMux.WithStorage(storage.NewMemoryStorage()), // Use memory storage
 )
 ```
 

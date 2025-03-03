@@ -59,15 +59,15 @@ func WithMaxFileSize(size int64) GFileMuxOption {
 	}
 }
 
-// WithValidationFunc sets the file validation function.
-func WithValidationFunc(validator FileValidatorFunc) GFileMuxOption {
+// WithFileValidatorFunc sets the file validation function.
+func WithFileValidatorFunc(validator FileValidatorFunc) GFileMuxOption {
 	return func(cfg *GFileMux) {
 		cfg.fileValidator = validator
 	}
 }
 
-// WithNameFuncGenerator sets the function to generate file names.
-func WithNameFuncGenerator(generator FileNameGeneratorFunc) GFileMuxOption {
+// WithFileNameGeneratorFunc sets the function to generate file names.
+func WithFileNameGeneratorFunc(generator FileNameGeneratorFunc) GFileMuxOption {
 	return func(cfg *GFileMux) {
 		cfg.fileNameGenerator = generator
 	}
@@ -80,8 +80,8 @@ func WithIgnoreNonExistentKey(ignore bool) GFileMuxOption {
 	}
 }
 
-// WithErrorResponseHandler sets the error response handler for uploads.
-func WithErrorResponseHandler(handler UploadErrorHandlerFunc) GFileMuxOption {
+// WithUploadErrorHandlerFunc sets the error response handler for uploads.
+func WithUploadErrorHandlerFunc(handler UploadErrorHandlerFunc) GFileMuxOption {
 	return func(cfg *GFileMux) {
 		cfg.uploadErrorHandler = handler
 	}
