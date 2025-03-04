@@ -2,13 +2,40 @@
 
 **GFileMux** is a fast, lightweight Go package for handling multipart file uploads. Inspired by Multer, it offers flexible storage options, middleware-style handling, and seamless processing with minimal overhead. Compatible with any Go HTTP framework, GFileMux simplifies file uploads for your web apps.
 
-## Features  
+## Table of Contents
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Storage Backends](#storage-backends)
+  - [Disk Storage](#disk-storage)
+  - [Memory Storage](#memory-storage)
+  - [S3 Storage](#s3-storage)
+- [API Reference](#api-reference)
+  - [GFileMux](#gfilemux)
+  - [File](#file)
+  - [UploadFileOptions](#uploadfileoptions)
+  - [UploadedFileMetadata](#uploadedfilemetadata)
+  - [PathOptions](#pathoptions)
+  - [Storage Interface](#storage-interface)
+  - [FileValidatorFunc](#filevalidatorfunc)
+  - [UploadErrorHandlerFunc](#uploaderrorhandlerfunc)
+  - [FileNameGeneratorFunc](#filenamegeneratorfunc)
+- [Options](#options)
+  - [WithStorage](#withstorage)
+  - [WithFileValidatorFunc](#withfilevalidatorfunc)
+  - [WithFileValidatorFunc](#withfilevalidatorfunc)
+  - [WithIgnoreNonExistentKey](#withignorenonexistentkey)
+
+## Features 
 ✅ **Efficient File Parsing** – Handles multipart/form-data seamlessly.  
 📂 **Flexible Storage** – Supports disk and in-memory storage.  
 🔍 **File Filtering** – Restrict uploads by type, size, and other conditions.  
 🏷 **Custom Naming** – Define unique filename strategies.  
 ⚡ **Concurrent Processing** – Optimized for high-speed uploads.  
 🛠 **Middleware Support** – Easily extend functionality.  
+
+
 
 ## Installation
 ```sh
@@ -127,6 +154,148 @@ config := GFileMux.New(
     }),
     GFileMux.WithStorage(storage.NewMemoryStorage()), // Use memory storage
 )
+```
+
+## Storage Backends 
+### Disk Storage
+Disk storage saves uploaded files to a specified directory on the local filesystem.
+```go
+disk, err := storage.NewDiskStorage("./uploads")
+if err != nil {
+    log.Fatalf("Error initializing disk storage: %v", err)
+}
+```
+
+### Memory Storage 
+Memory storage keeps uploaded files in memory.
+```go
+memory := storage.NewMemoryStorage()
+```
+
+### S3 Storage
+S3 storage uploads files to an Amazon S3 bucket.
+```go
+cfg, err := config.LoadDefaultConfig(context.TODO())
+if err != nil {
+    log.Fatalf("Error loading AWS config: %v", err)
+}
+
+s3Options := storage.S3Options{
+    DebugMode:    true,
+    UsePathStyle: true,
+    ACL:          types.ObjectCannedACLPublicRead,
+}
+
+s3Store, err := storage.NewS3FromConfig(cfg, s3Options)
+if err != nil {
+    log.Fatalf("Error initializing S3 storage: %v", err)
+}
+```
+
+## API Reference 
+### GFileMux
+The main struct for configuring and handling file uploads.
+
+### File
+Represents an uploaded file with relevant metadata.
+
+### UploadFileOptions 
+Holds the configuration for uploading a file.
+
+### UploadedFileMetadata 
+Contains metadata about a file after it has been uploaded.
+
+### PathOptions
+Holds options for generating the file's path.
+
+### Storage Interface 
+Defines the interface for interacting with file storage systems.
+
+### FileValidatorFunc 
+A function type used to validate a file during upload.
+
+### UploadErrorHandlerFunc 
+A custom function type used to handle errors when an upload fails.
+
+### FileNameGeneratorFunc 
+A function type that allows you to alter the name of the file before it is uploaded and stored.
+
+## Options 
+### WithStorage 
+Sets the storage backend for the GFileMux instance.
+```go
+GFileMux.WithStorage(storage.NewDiskStorage("./uploads"))
+```
+
+### WithMaxFileSize
+Sets the maximum file size for uploads.
+```go
+GFileMux.WithMaxFileSize(10<<20) // 10MB
+```
+
+### WithFileValidatorFunc 
+Sets the file validation function.
+```go
+GFileMux.WithFileValidatorFunc(GFileMux.ValidateMimeType("image/jpeg", "image/png"))
+```
+
+### WithFileNameGeneratorFunc 
+Sets the function to generate file names.
+```go
+GFileMux.WithFileNameGeneratorFunc(func(originalFileName string) string {
+    parts := strings.Split(originalFileName, ".")
+    ext := parts[len(parts)-1]
+    return fmt.Sprintf("%s.%s", uuid.NewString(), ext)
+})
+```
+
+### WithIgnoreNonExistentKey 
+Sets whether to ignore non-existent keys during file retrieval.
+```go
+GFileMux.WithIgnoreNonExistentKey(true)
+```
+
+### WithUploadErrorHandlerFunc 
+Sets the error response handler for uploads.
+```go
+GFileMux.WithUploadErrorHandlerFunc(func(err error) http.HandlerFunc {
+    return func(w http.ResponseWriter, _ *http.Request) {
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusInternalServerError)
+        fmt.Fprintf(w, `{"status": "error", "message": "GFileMux: File upload failed", "error": "%s"}`, err.Error())
+    }
+})
+```
+
+### UploadErrorHandlerFunc 
+A custom function type used to handle errors when an upload fails.
+### Example
+```go
+GFileMux.WithUploadErrorHandlerFunc(func(err error) http.HandlerFunc {
+    return func(w http.ResponseWriter, _ *http.Request) {
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusInternalServerError)
+        fmt.Fprintf(w, `{"status": "error", "message": "GFileMux: File upload failed", "error": "%s"}`, err.Error())
+    }
+})
+```
+
+### FileNameGeneratorFunc 
+A function type that allows you to alter the name of the file before it is uploaded and stored.
+### Example
+```go
+GFileMux.WithFileNameGeneratorFunc(func(originalFileName string) string {
+    parts := strings.Split(originalFileName, ".")
+    ext := parts[len(parts)-1]
+    return fmt.Sprintf("%s.%s", uuid.NewString(), ext)
+})
+```
+
+## FileValidatorFunc 
+A function type used to validate a file during upload.
+### Example
+```go
+GFileMux.ValidateMimeType("image/jpeg", "image/png")
 ```
 
 ## Contributing 🤝
