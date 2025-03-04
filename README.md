@@ -26,6 +26,8 @@
   - [WithFileValidatorFunc](#withfilevalidatorfunc)
   - [WithFileValidatorFunc](#withfilevalidatorfunc)
   - [WithIgnoreNonExistentKey](#withignorenonexistentkey)
+- [Contributing](/CONTRIBUTING.md)
+- [License](#license)
 
 ## Features 
 ✅ **Efficient File Parsing** – Handles multipart/form-data seamlessly.  
@@ -256,20 +258,7 @@ GFileMux.WithIgnoreNonExistentKey(true)
 ```
 
 ### WithUploadErrorHandlerFunc 
-Sets the error response handler for uploads.
-```go
-GFileMux.WithUploadErrorHandlerFunc(func(err error) http.HandlerFunc {
-    return func(w http.ResponseWriter, _ *http.Request) {
-        w.Header().Set("Content-Type", "application/json")
-        w.WriteHeader(http.StatusInternalServerError)
-        fmt.Fprintf(w, `{"status": "error", "message": "GFileMux: File upload failed", "error": "%s"}`, err.Error())
-    }
-})
-```
-
-### UploadErrorHandlerFunc 
 A custom function type used to handle errors when an upload fails.
-### Example
 ```go
 GFileMux.WithUploadErrorHandlerFunc(func(err error) http.HandlerFunc {
     return func(w http.ResponseWriter, _ *http.Request) {
@@ -291,17 +280,12 @@ GFileMux.WithFileNameGeneratorFunc(func(originalFileName string) string {
 })
 ```
 
-## FileValidatorFunc 
+### FileValidatorFunc 
 A function type used to validate a file during upload.
 ### Example
 ```go
 GFileMux.ValidateMimeType("image/jpeg", "image/png")
 ```
 
-## Contributing 🤝
-Contributions are welcome! Feel free to open issues or submit pull requests to improve GFileMux.
-
 ## License
 This project is licensed under the MIT License. 
-
-
