@@ -1,20 +1,23 @@
 # Contributing to GFileMux
 
-First off, **thank you for taking the time to contribute!** 🎉  
-Every contribution — bug reports, feature ideas, documentation improvements, or code — is appreciated and helps make GFileMux better for everyone.
+This document is for anyone thinking about opening an issue, discussion, or pull request.
+
+> [!NOTE]
+>
+> I appreciate you being here. GFileMux is a personal project that I maintain in my free time — it's not backed by a company or a team. If you're expecting me to dedicate my personal time to reviewing contributions and fixing bugs, I just ask that you spend a few minutes reading this first. Thank you. ❤️
 
 ---
 
 ## Table of Contents
 - [Code of Conduct](#code-of-conduct)
 - [Getting Started](#getting-started)
-- [How to Contribute](#how-to-contribute)
-  - [Reporting Bugs](#reporting-bugs)
-  - [Suggesting Features](#suggesting-features)
-  - [Submitting a Pull Request](#submitting-a-pull-request)
+- [Ways to Contribute](#ways-to-contribute)
+  - [Found a Bug?](#found-a-bug)
+  - [Have an Idea?](#have-an-idea)
+  - [Sending a Pull Request](#sending-a-pull-request)
 - [Development Setup](#development-setup)
 - [Code Style](#code-style)
-- [Testing](#testing)
+- [Writing Tests](#writing-tests)
 - [Commit Messages](#commit-messages)
 - [Versioning](#versioning)
 
@@ -22,177 +25,120 @@ Every contribution — bug reports, feature ideas, documentation improvements, o
 
 ## Code of Conduct
 
-This project follows a simple rule: **be kind and respectful**. Harassment, discrimination, or hostile behaviour of any kind will not be tolerated. Please treat every contributor the way you would want to be treated.
+Keep it simple: be kind. Treat people the way you'd want to be treated. Hostile or dismissive behaviour isn't welcome here.
 
 ---
 
 ## Getting Started
 
-1. **Fork** the repository on GitHub.
-2. **Clone** your fork locally:
-   ```sh
-   git clone https://github.com/<your-username>/GFileMux.git
-   cd GFileMux
-   ```
-3. **Add the upstream remote** so you can pull future changes:
-   ```sh
-   git remote add upstream https://github.com/ghulamazad/GFileMux.git
-   ```
-4. **Install dependencies:**
-   ```sh
-   go mod download
-   ```
+```sh
+# Fork on GitHub, then:
+git clone https://github.com/<your-username>/GFileMux.git
+cd GFileMux
+
+# Keep in sync with the original
+git remote add upstream https://github.com/ghulamazad/GFileMux.git
+
+# Pull in dependencies
+go mod download
+```
 
 ---
 
-## How to Contribute
+## Ways to Contribute
 
-### Reporting Bugs
+### Found a Bug?
 
-Before opening an issue, please:
-- Search [existing issues](https://github.com/ghulamazad/GFileMux/issues) to avoid duplicates.
-- Check that you are on the latest version.
+Before opening an issue, do a quick search to make sure it hasn't been reported already. When you do open one, include:
 
-When filing a bug report, include:
-- **Go version** (`go version`)
-- **GFileMux version** (the `go.mod` entry or git tag)
-- **Minimal reproducing example** — a short code snippet or test is ideal
-- **Expected vs actual behaviour**
-- **Stack trace / error message** (if applicable)
+- Your **Go version** (`go version`)
+- Your **GFileMux version** (from `go.mod` or the git tag)
+- A **short code snippet** that reproduces the problem
+- What you **expected** to happen vs what **actually** happened
+- Any relevant error output or stack traces
 
-### Suggesting Features
+The more context you give us, the faster we can help.
 
-Open a [GitHub Discussion](https://github.com/ghulamazad/GFileMux/discussions) or an issue tagged `enhancement`. Describe:
-- The problem you are trying to solve
-- Your proposed solution (even a rough sketch helps)
+### Have an Idea?
+
+Open a [GitHub Discussion](https://github.com/ghulamazad/GFileMux/discussions) or create an issue labeled `enhancement`. Tell us:
+
+- What problem you're trying to solve
+- How you'd like it to work
 - Any alternatives you considered
 
-### Submitting a Pull Request
+No judgment on rough ideas — early conversation is better than a surprise PR.
 
-1. **Create a branch** from `main`:
+### Sending a Pull Request
+
+1. Create a branch off `main`:
    ```sh
-   git checkout -b feat/my-new-feature
+   git checkout -b fix/some-bug
+   # or
+   git checkout -b feat/cool-feature
    ```
-2. **Make your changes** (see [Code Style](#code-style) and [Testing](#testing) below).
-3. **Run the full test suite** including the race detector:
+2. Make your changes.
+3. Run the full test suite (with the race detector):
    ```sh
    go test ./... -race
    ```
-4. **Run `go vet`:**
+4. Run `go vet`:
    ```sh
    go vet ./...
    ```
-5. **Commit** your changes (see [Commit Messages](#commit-messages)).
-6. **Push** your branch:
+5. Commit and push:
    ```sh
-   git push origin feat/my-new-feature
+   git push origin fix/some-bug
    ```
-7. **Open a Pull Request** against `main`. Fill in the PR template — describe *what* changed and *why*.
+6. Open a pull request against `main` and describe what you did and why.
 
-> **Tip:** For large changes, open an issue first to discuss the design before writing code. This saves everyone time.
+> **Heads-up:** For bigger changes, open an issue first to talk through the approach. It saves a lot of back-and-forth later.
 
 ---
 
 ## Development Setup
 
-| Tool | Purpose |
-|------|---------|
-| Go ≥ 1.23 | Required |
-| `go vet` | Static analysis (built-in) |
-| `golangci-lint` (optional) | Extended linting — `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest` |
+You'll need **Go ≥ 1.23**. That's really it.
 
-Run all tests with the race detector:
 ```sh
+# Run all tests with race detection
 go test ./... -race -v
-```
 
-Run only storage tests:
-```sh
+# Just the storage tests
 go test ./storage/... -race -v
-```
 
-Build everything:
-```sh
+# Make sure everything compiles
 go build ./...
 ```
+
+If you want extended linting, [golangci-lint](https://golangci-lint.run/) is nice to have but not required.
 
 ---
 
 ## Code Style
 
-- Follow [Effective Go](https://go.dev/doc/effective_go) and the [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments).
-- All exported types, functions, and methods **must have doc comments**.
-- Use `errors.As` / `errors.Is` — do not compare error strings.
-- Return structured errors from the `errors.go` types (`ValidationError`, `StorageError`, etc.) instead of plain `fmt.Errorf` strings where applicable.
-- Keep functions small and focused. If a function needs a long comment explaining what it does, consider splitting it.
-- Format your code with `gofmt` (or `goimports`) before committing.
+Nothing exotic here — just standard Go conventions:
+
+- Follow [Effective Go](https://go.dev/doc/effective_go). When in doubt, that's the guide.
+- All exported symbols need doc comments. Even a single sentence is better than nothing.
+- Use `errors.As` / `errors.Is` — don't compare error strings.
+- Return the structured error types from `errors.go` (`ValidationError`, `StorageError`, etc.) instead of bare `fmt.Errorf` where it makes sense.
+- Format with `gofmt` or `goimports` before committing. Most editors will do this automatically.
 
 ---
 
-## Testing
+## Writing Tests
 
-- Every new feature or bug fix **must** include a test.
-- Tests live alongside the code they test (`foo_test.go` next to `foo.go`).
-- Use `t.TempDir()` for temporary files — it is automatically cleaned up.
-- For concurrency-sensitive code, add a test that runs under `-race`.
-- Avoid network calls in tests; use interfaces and mocks (see `MockStorage` in `handler_test.go`).
+- New features and bug fixes need tests — no exceptions.
+- Tests live next to the code (`foo_test.go` beside `foo.go`).
+- Use `t.TempDir()` for temp files. It cleans itself up so you don't have to.
+- Anything involving goroutines? Add a test that exercises it under `-race`.
+- Avoid real network calls. Use mocks and interfaces — check out `MockStorage` in `handler_test.go` for an example.
 
-**Test naming convention:**
-```
-Test<TypeOrFunction>_<Scenario>
-```
+**Naming:** `Test<Type>_<Scenario>` works well.  
 Examples: `TestUpload_MaxFiles`, `TestDiskStorage_AutoCreateDir`
 
----
-
-## Commit Messages
-
-We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
-
-```
-<type>(<scope>): <short summary>
-
-[optional body]
-
-[optional footer]
-```
-
-**Types:**
-
-| Type | When to use |
-|------|-------------|
-| `feat` | New feature |
-| `fix` | Bug fix |
-| `docs` | Documentation only |
-| `test` | Adding or fixing tests |
-| `refactor` | Code change (no feature, no fix) |
-| `chore` | Build process, dependency updates |
-| `perf` | Performance improvement |
-
-**Examples:**
-```
-feat(storage): add Delete method to all backends
-fix(handler): replace shared map with sync.Map to eliminate race condition
-docs(readme): document WithMaxFiles and WithLogger options
-test(storage): add concurrent upload stress test for MemoryStorage
-```
-
----
-
-## Versioning
-
-GFileMux follows [Semantic Versioning](https://semver.org/):
-
-| Change type | Version bump |
-|-------------|-------------|
-| Breaking API change (e.g. new required interface method) | **MAJOR** (`v1.0.0 → v2.0.0`) |
-| Backward-compatible new feature | **MINOR** (`v0.1.0 → v0.2.0`) |
-| Backward-compatible bug fix | **PATCH** (`v0.1.0 → v0.1.1`) |
-
-All changes are recorded in [CHANGELOG.md](CHANGELOG.md) under the `[Unreleased]` section. When a release is cut, that section is renamed to the version + date.
-
----
 
 ## Questions?
 
-Open a [GitHub Discussion](https://github.com/ghulamazad/GFileMux/discussions) or reach out via an issue. We're happy to help!
+Open a [GitHub Discussion](https://github.com/ghulamazad/GFileMux/discussions) or just drop an issue. Happy to help!
