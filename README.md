@@ -57,9 +57,20 @@ GFileMux is a personal passion project by me ([@ghulamazad](https://github.com/g
 🛠 **Middleware Support** – Works with `net/http` and any compatible router/framework.  
 
 ## Installation
+
+To install GFileMux in your Go project, use `go get` pointing to this repository.
+
+To get the **latest release**:
 ```sh
-go get github.com/ghulamazad/GFileMux
+go get github.com/ghulamazad/GFileMux@latest
 ```
+
+To lock to a **specific version** (recommended for production):
+```sh
+go get github.com/ghulamazad/GFileMux@v0.2.0
+```
+
+*Note: GFileMux uses Semantic Versioning. Only Major version bumps (e.g. v1 to v2) will contain breaking API changes.*
 
 ## Quick Start
 ```go
