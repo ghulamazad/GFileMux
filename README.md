@@ -70,8 +70,6 @@ To lock to a **specific version** (recommended for production):
 go get github.com/ghulamazad/GFileMux@v0.2.0
 ```
 
-*Note: GFileMux uses Semantic Versioning. Only Major version bumps (e.g. v1 to v2) will contain breaking API changes.*
-
 ## Quick Start
 ```go
 package main
