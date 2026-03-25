@@ -34,16 +34,11 @@ type S3Store struct {
 func NewS3FromConfig(cfg aws.Config, options S3Options) (*S3Store, error) {
 	client := s3.NewFromConfig(cfg, func(opt *s3.Options) {
 		opt.UsePathStyle = options.UsePathStyle
-
 		if options.DebugMode {
 			opt.ClientLogMode = aws.LogSigning | aws.LogRequest | aws.LogResponseWithBody
 		}
 	})
-
-	return &S3Store{
-		client,
-		options,
-	}, nil
+	return &S3Store{client, options}, nil
 }
 
 // NewS3FromEnvironment initializes an S3Store from the environment configuration.
@@ -52,42 +47,36 @@ func NewS3FromEnvironment(options S3Options) (*S3Store, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return NewS3FromConfig(cfg, options)
 }
 
 // NewS3FromClient initializes an S3Store from an existing S3 client.
 func NewS3FromClient(client *s3.Client, options S3Options) (*S3Store, error) {
-	return &S3Store{
-		client,
-		options,
-	}, nil
+	return &S3Store{client, options}, nil
 }
 
 // Upload uploads a file to S3 with the given options.
-func (s *S3Store) Upload(ctx context.Context, r io.Reader, options GFileMux.UploadFileOptions) (*GFileMux.UploadedFileMetadata, error) {
-	// Ensure the S3 bucket is valid
+func (s *S3Store) Upload(ctx context.Context, r io.Reader, options *GFileMux.UploadFileOptions) (*GFileMux.UploadedFileMetadata, error) {
+	if options == nil {
+		return nil, errors.New("upload options are required")
+	}
 	if len(strings.TrimSpace(options.Bucket)) == 0 {
 		return nil, errors.New("please provide a valid S3 bucket")
 	}
 
-	// Create a buffer to store the contents of the file
+	// Buffer the reader so we can compute the size and seek back for upload.
 	b := new(bytes.Buffer)
 	r = io.TeeReader(r, b)
-
-	// Copy the content to discard to calculate the size
 	n, err := io.Copy(io.Discard, r)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert the buffer to a reader that can be seeked
 	seeker, err := utils.ReaderToSeeker(b)
 	if err != nil {
 		return nil, err
 	}
 
-	// Upload the file to S3
 	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:   aws.String(options.Bucket),
 		Metadata: options.Metadata,
@@ -96,10 +85,9 @@ func (s *S3Store) Upload(ctx context.Context, r io.Reader, options GFileMux.Uplo
 		Body:     seeker,
 	})
 	if err != nil {
-		return nil, err
+		return nil, &GFileMux.StorageError{Backend: "s3", Op: "Upload", Err: err}
 	}
 
-	// Return metadata of the uploaded file
 	return &GFileMux.UploadedFileMetadata{
 		FolderDestination: options.Bucket,
 		Size:              n,
@@ -109,50 +97,52 @@ func (s *S3Store) Upload(ctx context.Context, r io.Reader, options GFileMux.Uplo
 
 // Path generates a URL to access a file in S3, either a presigned URL or a direct URL.
 func (s *S3Store) Path(ctx context.Context, options GFileMux.PathOptions) (string, error) {
-	// If the file should be accessed over HTTP (non-secure), construct a direct URL
 	if !options.IsSecure {
 		resp, err := s.client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
 			Bucket: &options.Bucket,
 		})
-
 		if err != nil {
 			return "", fmt.Errorf("failed to get bucket location: %w", err)
 		}
 
-		// Default to "us-east-1" if no location is provided
 		region := string(resp.LocationConstraint)
 		if region == "" {
 			region = "us-east-1"
 		}
-
-		// Construct a direct URL to the S3 object
 		url := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", options.Bucket, region, options.Key)
 		return url, nil
 	}
 
-	// Otherwise, create a presigned URL for secure access
 	presignClient := s3.NewPresignClient(s.client)
-
 	presignRequest, err := presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: &options.Bucket,
 		Key:    &options.Key,
 	}, s3.WithPresignExpires(options.ExpirationTime))
-
 	if err != nil {
 		return "", fmt.Errorf("failed to generate presigned URL: %w", err)
 	}
-
 	return presignRequest.URL, nil
 }
 
-// Close closes the S3 store (no-op for the AWS SDK but provides an interface for potential cleanup).
+// Delete removes an object from S3 identified by bucket and key.
+func (s *S3Store) Delete(ctx context.Context, bucket, key string) error {
+	if bucket == "" || key == "" {
+		return fmt.Errorf("bucket and key are required")
+	}
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return &GFileMux.StorageError{Backend: "s3", Op: "Delete", Err: err}
+	}
+	return nil
+}
+
+// Close closes the S3 store (no-op; AWS SDK manages its own connections).
 func (s *S3Store) Close() error {
-	// If DebugMode is enabled, log that the store is being closed.
 	if s.options.DebugMode {
 		log.Println("S3 store is being closed.")
 	}
-
-	// Since AWS SDK for Go doesn't need to explicitly close resources,
-	// we will just return nil here.
 	return nil
 }

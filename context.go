@@ -12,7 +12,26 @@ type fileContextKey string
 // Define the key used for storing files in context.
 const fileKey fileContextKey = "files"
 
+// Files is a map of field name → slice of uploaded files for that field.
 type Files map[string][]File
+
+// All returns a flat slice of every uploaded File across all form fields.
+func (f Files) All() []File {
+	var all []File
+	for _, files := range f {
+		all = append(all, files...)
+	}
+	return all
+}
+
+// Count returns the total number of uploaded files across all form fields.
+func (f Files) Count() int {
+	n := 0
+	for _, files := range f {
+		n += len(files)
+	}
+	return n
+}
 
 // addFilesToContext stores the provided files in the context under the key `fileKey`.
 // If files already exist in the context, the new ones are appended.
@@ -61,3 +80,4 @@ func GetFilesByFieldFromContext(r *http.Request, key string) ([]File, error) {
 	}
 	return files[key], nil
 }
+

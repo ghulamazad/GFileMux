@@ -43,6 +43,9 @@ type Storage interface {
 	// Path generates a path for the given file based on the provided options.
 	Path(ctx context.Context, options PathOptions) (string, error)
 
+	// Delete removes a stored file identified by bucket and key.
+	Delete(ctx context.Context, bucket, key string) error
+
 	// Closer interface to close any resources after use.
 	io.Closer
 }

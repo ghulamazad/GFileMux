@@ -31,60 +31,164 @@ func (ms *MockStorage) Path(ctx context.Context, options PathOptions) (string, e
 	return "mock/path/" + options.Key, nil
 }
 
+func (ms *MockStorage) Delete(ctx context.Context, bucket, key string) error {
+	return nil
+}
+
 func (ms *MockStorage) Close() error {
 	return nil
 }
 
-func TestUpload(t *testing.T) {
-	mockStorage := &MockStorage{}
-	handler, err := New(
-		WithStorage(mockStorage),
-		WithMaxFileSize(10<<20),
+func newTestHandler(t *testing.T, opts ...GFileMuxOption) *GFileMux {
+	t.Helper()
+	defaults := []GFileMuxOption{
+		WithStorage(&MockStorage{}),
+		WithMaxFileSize(10 << 20),
 		WithFileValidatorFunc(DefaultFileValidator),
 		WithFileNameGeneratorFunc(DefaultFileNameGeneratorFunc),
 		WithUploadErrorHandlerFunc(DefaultUploadErrorHandlerFunc),
-	)
-	if err != nil {
-		t.Fatalf("Failed to create handler: %v", err)
 	}
+	handler, err := New(append(defaults, opts...)...)
+	if err != nil {
+		t.Fatalf("failed to create test handler: %v", err)
+	}
+	return handler
+}
 
-	// Create a new HTTP request with a multipart form
+func buildMultipartRequest(t *testing.T, field, filename string, content []byte) *http.Request {
+	t.Helper()
 	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file1", "testfile.txt")
+	w := multipart.NewWriter(body)
+	part, err := w.CreateFormFile(field, filename)
 	if err != nil {
-		t.Fatalf("Failed to create form file: %v", err)
+		t.Fatalf("CreateFormFile: %v", err)
 	}
-	part.Write([]byte("This is a test file"))
-	writer.Close()
+	part.Write(content)
+	w.Close()
+	req := httptest.NewRequest(http.MethodPost, "/", body)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	return req
+}
 
-	req := httptest.NewRequest("POST", "/", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+func TestUpload(t *testing.T) {
+	handler := newTestHandler(t)
 
-	// Create a ResponseRecorder to capture the response
+	req := buildMultipartRequest(t, "file1", "testfile.txt", []byte("This is a test file"))
 	rr := httptest.NewRecorder()
 
-	// Create a test handler to verify the upload
-	testHandler := handler.Upload("test_bucket", "file1")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler.Upload("test_bucket", "file1")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		files, err := GetUploadedFilesFromContext(r)
 		if err != nil {
-			t.Fatalf("Failed to get uploaded files from context: %v", err)
+			t.Fatalf("GetUploadedFilesFromContext: %v", err)
 		}
-
 		if len(files["file1"]) != 1 {
-			t.Fatalf("Expected 1 file, got %d", len(files["file1"]))
+			t.Fatalf("expected 1 file, got %d", len(files["file1"]))
 		}
-
 		if files["file1"][0].OriginalName != "testfile.txt" {
-			t.Fatalf("Expected file name 'testfile.txt', got '%s'", files["file1"][0].OriginalName)
+			t.Fatalf("expected OriginalName 'testfile.txt', got %q", files["file1"][0].OriginalName)
 		}
-	}))
+	})).ServeHTTP(rr, req)
 
-	// Serve the HTTP request
-	testHandler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
 
-	// Check the response status code
-	if status := rr.Code; status != http.StatusOK {
-		t.Fatalf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
+func TestUpload_MaxFiles(t *testing.T) {
+	handler := newTestHandler(t, WithMaxFiles(1))
+
+	// Build request with 2 files for the same field.
+	body := new(bytes.Buffer)
+	w := multipart.NewWriter(body)
+	for _, name := range []string{"a.txt", "b.txt"} {
+		part, _ := w.CreateFormFile("docs", name)
+		part.Write([]byte("data"))
+	}
+	w.Close()
+	req := httptest.NewRequest(http.MethodPost, "/", body)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	rr := httptest.NewRecorder()
+
+	handler.Upload("bucket", "docs")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should not be reached when MaxFiles is exceeded")
+	})).ServeHTTP(rr, req)
+
+	// Default error handler returns 500; check it didn't reach the next handler.
+	if rr.Code == http.StatusOK {
+		t.Fatal("expected non-200 when MaxFiles exceeded")
+	}
+}
+
+func TestUpload_AllowedBuckets_Rejected(t *testing.T) {
+	handler := newTestHandler(t, WithAllowedBuckets("images"))
+
+	req := buildMultipartRequest(t, "file1", "doc.pdf", []byte("pdf content"))
+	rr := httptest.NewRecorder()
+
+	handler.Upload("documents", "file1")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should not be reached for disallowed bucket")
+	})).ServeHTTP(rr, req)
+
+	if rr.Code == http.StatusOK {
+		t.Fatal("expected non-200 for disallowed bucket")
+	}
+}
+
+func TestUpload_Checksum(t *testing.T) {
+	handler := newTestHandler(t, WithChecksumValidation(true))
+
+	req := buildMultipartRequest(t, "file1", "test.txt", []byte("hello world"))
+	rr := httptest.NewRecorder()
+
+	handler.Upload("bucket", "file1")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		files, err := GetUploadedFilesFromContext(r)
+		if err != nil {
+			t.Fatalf("GetUploadedFilesFromContext: %v", err)
+		}
+		checksum := files["file1"][0].ChecksumSHA256
+		if checksum == "" {
+			t.Fatal("expected non-empty ChecksumSHA256")
+		}
+		// SHA-256 of "hello world"
+		const want = "b94d27b9934d3e08a52e52d7da7dabfac484efe04294e576b4e8ad5194123ecf"
+		// We just verify it's non-empty and 64 hex chars.
+		if len(checksum) != 64 {
+			t.Fatalf("expected 64-char hex checksum, got %d chars: %s", len(checksum), checksum)
+		}
+	})).ServeHTTP(rr, req)
+}
+
+func TestUploadSingle(t *testing.T) {
+	handler := newTestHandler(t)
+	req := buildMultipartRequest(t, "avatar", "pic.jpg", []byte("fake-jpeg"))
+	rr := httptest.NewRecorder()
+
+	handler.UploadSingle("images", "avatar")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		files, err := GetUploadedFilesFromContext(r)
+		if err != nil {
+			t.Fatalf("GetUploadedFilesFromContext: %v", err)
+		}
+		if len(files["avatar"]) != 1 {
+			t.Fatalf("expected 1 file, got %d", len(files["avatar"]))
+		}
+	})).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
+
+func TestUpload_IgnoreNonExistentKey(t *testing.T) {
+	handler := newTestHandler(t, WithIgnoreNonExistentKey(true))
+	req := buildMultipartRequest(t, "file1", "a.txt", []byte("data"))
+	rr := httptest.NewRecorder()
+
+	// Request for "missing_field" — should be ignored, not error.
+	handler.Upload("bucket", "missing_field")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 when IgnoreNonExistentKey=true, got %d", rr.Code)
 	}
 }

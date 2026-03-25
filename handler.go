@@ -4,39 +4,54 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/ghulamazad/GFileMux/utils"
 	"golang.org/x/sync/errgroup"
 )
 
-// Config represents the configuration for the file upload handler.
+// GFileMux is the core handler struct holding all upload configuration.
 type GFileMux struct {
-	// storage defines where the uploaded files are stored (e.g., local disk, cloud storage).
+	// storage defines where uploaded files are persisted.
 	storage Storage
 
-	// maxSize sets the maximum allowed size for uploaded files in bytes.
+	// maxSize is the maximum allowed size for the entire multipart body in bytes.
 	maxSize int64
 
-	// ignoreNonExistentKeys, when set to true, allows the handler to skip missing keys
-	// during file retrieval instead of failing the request.
+	// maxFiles is the maximum number of files allowed per form field. 0 = unlimited.
+	maxFiles int
+
+	// ignoreNonExistentKeys, when true, silently skips form fields that are absent.
 	ignoreNonExistentKeys bool
 
-	// fileValidator is a function used to validate uploaded files (e.g., file type, size).
+	// allowedBuckets is an optional whitelist of permitted bucket names.
+	// An empty slice means all buckets are allowed.
+	allowedBuckets []string
+
+	// computeChecksum controls whether SHA-256 is computed for each uploaded file.
+	computeChecksum bool
+
+	// fileValidator validates each file before it is stored.
 	fileValidator FileValidatorFunc
 
-	// fileNameGenerator generates unique names for uploaded files.
+	// fileNameGenerator generates a storage filename from the original name.
 	fileNameGenerator FileNameGeneratorFunc
 
-	// uploadErrorHandler handles errors that occur during file upload, typically by
-	// customizing the response returned to the client.
+	// uploadErrorHandler builds the HTTP error response for upload failures.
 	uploadErrorHandler UploadErrorHandlerFunc
+
+	// logger is an optional structured logger. nil means no logging.
+	logger *slog.Logger
 }
 
-// GFileMuxOption is a function type that configures the GFileMux instance.
+// GFileMuxOption is a function that configures a GFileMux instance.
 type GFileMuxOption func(*GFileMux)
 
+// New creates a new GFileMux handler with the supplied options.
+// A storage backend must be provided via WithStorage; all other options are optional.
 func New(options ...GFileMuxOption) (*GFileMux, error) {
 	handler := &GFileMux{}
 
@@ -47,50 +62,78 @@ func New(options ...GFileMuxOption) (*GFileMux, error) {
 	if handler.maxSize <= 0 {
 		handler.maxSize = DefaultMaxFileUploadSize
 	}
-
 	if handler.fileValidator == nil {
 		handler.fileValidator = DefaultFileValidator
 	}
-
 	if handler.fileNameGenerator == nil {
 		handler.fileNameGenerator = DefaultFileNameGeneratorFunc
 	}
-
 	if handler.uploadErrorHandler == nil {
 		handler.uploadErrorHandler = DefaultUploadErrorHandlerFunc
 	}
-
 	if handler.storage == nil {
-		return nil, errors.New("a storage backend must be provided")
+		return nil, errors.New("a storage backend must be provided via WithStorage")
 	}
 
 	return handler, nil
 }
 
+// Storage returns the configured storage backend.
 func (gfm *GFileMux) Storage() Storage {
 	return gfm.storage
 }
 
-// UploadOptions struct to encapsulate the options
+// isBucketAllowed returns true when the bucket is in the allowedBuckets list,
+// or when no whitelist has been configured.
+func (gfm *GFileMux) isBucketAllowed(bucket string) bool {
+	if len(gfm.allowedBuckets) == 0 {
+		return true
+	}
+	for _, b := range gfm.allowedBuckets {
+		if b == bucket {
+			return true
+		}
+	}
+	return false
+}
+
+// log emits a structured log line when a logger is configured.
+func (gfm *GFileMux) log(ctx context.Context, level slog.Level, msg string, args ...any) {
+	if gfm.logger != nil {
+		gfm.logger.Log(ctx, level, msg, args...)
+	}
+}
+
+// UploadOptions struct encapsulates per-call upload options.
 type UploadOptions struct {
 	Bucket string
 	Keys   []string
 }
 
-// Option is a function that configures an UploadOptions
+// Option configures an UploadOptions value.
 type Option func(*UploadOptions)
 
-// Upload is a HTTP middleware that takes in a list of form fields and the next
-// HTTP handler to run after the upload process is completed
+// Upload returns an HTTP middleware that parses a multipart form, uploads the
+// files found under each of the provided keys to the configured storage backend,
+// and stores their metadata in the request context for use by the next handler.
+//
+// The race condition that previously existed (concurrent writes to a plain map)
+// is eliminated here by using sync.Map: each goroutine writes exclusively to its
+// own key, so there is zero lock contention while still being race-detector-clean.
 func (gfm *GFileMux) Upload(bucket string, keys ...string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			r.Body = http.MaxBytesReader(w, r.Body, gfm.maxSize)
+			// Guard: validate bucket against allowedBuckets whitelist.
+			if !gfm.isBucketAllowed(bucket) {
+				gfm.uploadErrorHandler(fmt.Errorf("bucket %q is not allowed", bucket)).ServeHTTP(w, r)
+				return
+			}
 
-			err := r.ParseMultipartForm(gfm.maxSize)
-			if err != nil {
+			// Enforce total body size limit before parsing.
+			r.Body = http.MaxBytesReader(w, r.Body, gfm.maxSize)
+			if err := r.ParseMultipartForm(gfm.maxSize); err != nil {
 				if strings.Contains(err.Error(), "request body too large") {
-					gfm.uploadErrorHandler(fmt.Errorf("file size exceeded the limit of %d bytes", gfm.maxSize)).ServeHTTP(w, r)
+					gfm.uploadErrorHandler(&SizeError{Size: gfm.maxSize, MaxSize: gfm.maxSize}).ServeHTTP(w, r)
 					return
 				}
 				gfm.uploadErrorHandler(err).ServeHTTP(w, r)
@@ -100,14 +143,15 @@ func (gfm *GFileMux) Upload(bucket string, keys ...string) func(next http.Handle
 			ctx, cancel := context.WithCancel(r.Context())
 			defer cancel()
 
-			// Create an errgroup with context propagation
+			gfm.log(ctx, slog.LevelInfo, "upload started", "bucket", bucket, "fields", keys)
+
+			// Use sync.Map so each goroutine can write its own key concurrently
+			// without any mutex — zero contention, race-detector clean.
+			var sm sync.Map
 			var wg errgroup.Group
 
-			uploadedFiles := make(Files, len(keys))
-
-			// Iterate over each key and process the uploaded files
 			for _, key := range keys {
-				key := key // capture key for closure
+				key := key // capture for closure
 
 				wg.Go(func() error {
 					fileHeaders, ok := r.MultipartForm.File[key]
@@ -115,76 +159,118 @@ func (gfm *GFileMux) Upload(bucket string, keys ...string) func(next http.Handle
 						if gfm.ignoreNonExistentKeys {
 							return nil
 						}
-						return fmt.Errorf("files could not be found in key (%s) from the HTTP request", key)
+						return fmt.Errorf("no files found for field %q in the request", key)
 					}
 
-					uploadedFiles[key] = make([]File, 0, len(fileHeaders))
+					// Enforce per-field file count limit.
+					if gfm.maxFiles > 0 && len(fileHeaders) > gfm.maxFiles {
+						return &MaxFilesError{Field: key, Got: len(fileHeaders), MaxFiles: gfm.maxFiles}
+					}
+
+					localFiles := make([]File, 0, len(fileHeaders))
 
 					for _, header := range fileHeaders {
-						// Open the file and handle the file metadata
 						f, err := header.Open()
 						if err != nil {
-							return fmt.Errorf("could not open file for key (%s): %v", key, err)
+							return fmt.Errorf("could not open file for field %q: %w", key, err)
 						}
 						defer f.Close()
 
 						uploadedFileName := gfm.fileNameGenerator(header.Filename)
 
-						// Fetch MIME type of the uploaded file
+						// Detect MIME type from the first 512 bytes.
 						mimeType, err := utils.FetchContentType(f)
 						if err != nil {
-							return fmt.Errorf("%s has an invalid MIME type: %v", key, err)
+							return fmt.Errorf("could not detect MIME type for field %q: %w", key, err)
 						}
 
-						fileSize := header.Size
-
-						// Create a file data struct
 						fileData := File{
 							FieldName:        key,
 							OriginalName:     header.Filename,
 							UploadedFileName: uploadedFileName,
 							MimeType:         mimeType,
-							Size:             fileSize,
+							Size:             header.Size,
 						}
 
-						// Validate file data
+						// Run user-configured validators before touching storage.
 						if err := gfm.fileValidator(fileData); err != nil {
-							return fmt.Errorf("validation failed for (%s): %v", key, err)
+							return fmt.Errorf("validation failed for field %q: %w", key, err)
 						}
 
-						// Upload file to storage
+						// Optionally compute SHA-256 before upload (reader is seeked back afterward).
+						if gfm.computeChecksum {
+							checksum, err := utils.ComputeSHA256(f)
+							if err != nil {
+								return fmt.Errorf("could not compute checksum for field %q: %w", key, err)
+							}
+							fileData.ChecksumSHA256 = checksum
+						}
+
+						// Upload to the configured storage backend.
 						metadata, err := gfm.storage.Upload(ctx, f, &UploadFileOptions{
 							FileName: uploadedFileName,
 							Bucket:   bucket,
 						})
 						if err != nil {
-							return fmt.Errorf("could not upload file to storage (%s): %v", key, err)
+							return fmt.Errorf("storage upload failed for field %q: %w", key, err)
 						}
 
-						// Add metadata to file data
 						fileData.Size = metadata.Size
 						fileData.FolderDestination = metadata.FolderDestination
 						fileData.StorageKey = metadata.Key
 
-						// Append file data to uploaded files map
-						uploadedFiles[key] = append(uploadedFiles[key], fileData)
+						localFiles = append(localFiles, fileData)
 					}
 
+					// Each goroutine owns one unique key — zero contention with sync.Map.
+					sm.Store(key, localFiles)
 					return nil
 				})
 			}
 
-			// Wait for all file upload operations to finish
 			if err := wg.Wait(); err != nil {
+				gfm.log(ctx, slog.LevelError, "upload failed", "error", err)
 				gfm.uploadErrorHandler(err).ServeHTTP(w, r)
 				return
 			}
 
-			// Write uploaded files to request context
-			r = r.WithContext(addFilesToContext(r.Context(), uploadedFiles))
+			// Collect results from sync.Map back into a plain Files map (single-threaded).
+			uploadedFiles := make(Files, len(keys))
+			sm.Range(func(k, v any) bool {
+				uploadedFiles[k.(string)] = v.([]File)
+				return true
+			})
 
-			// Pass the request to the next handler
+			gfm.log(ctx, slog.LevelInfo, "upload completed",
+				"bucket", bucket,
+				"total_files", uploadedFiles.Count(),
+			)
+
+			r = r.WithContext(addFilesToContext(r.Context(), uploadedFiles))
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+// UploadSingle is a convenience wrapper around Upload that enforces exactly one
+// file for the given field. If the request contains more than one file for that
+// field, the middleware returns an error before touching storage.
+func (gfm *GFileMux) UploadSingle(bucket, key string) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		inner := gfm.Upload(bucket, key)
+		return inner(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			files, err := GetUploadedFilesFromContext(r)
+			if err != nil {
+				gfm.uploadErrorHandler(err).ServeHTTP(w, r)
+				return
+			}
+			if len(files[key]) > 1 {
+				gfm.uploadErrorHandler(
+					&MaxFilesError{Field: key, Got: len(files[key]), MaxFiles: 1},
+				).ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		}))
 	}
 }

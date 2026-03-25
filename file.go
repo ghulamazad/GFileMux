@@ -23,4 +23,8 @@ type File struct {
 
 	// Size is the size of the uploaded file in bytes.
 	Size int64 `json:"size,omitempty"`
+
+	// ChecksumSHA256 is the hex-encoded SHA-256 hash of the file contents, computed during upload.
+	// It is empty when WithChecksumValidation is not enabled.
+	ChecksumSHA256 string `json:"checksum_sha256,omitempty"`
 }
