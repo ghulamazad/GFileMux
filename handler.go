@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 
@@ -89,12 +90,7 @@ func (gfm *GFileMux) isBucketAllowed(bucket string) bool {
 	if len(gfm.allowedBuckets) == 0 {
 		return true
 	}
-	for _, b := range gfm.allowedBuckets {
-		if b == bucket {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(gfm.allowedBuckets, bucket)
 }
 
 // log emits a structured log line when a logger is configured.
@@ -151,7 +147,6 @@ func (gfm *GFileMux) Upload(bucket string, keys ...string) func(next http.Handle
 			var wg errgroup.Group
 
 			for _, key := range keys {
-				key := key // capture for closure
 
 				wg.Go(func() error {
 					fileHeaders, ok := r.MultipartForm.File[key]

@@ -3,6 +3,7 @@ package GFileMux
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -21,10 +22,8 @@ func ValidateMimeType(validMimeTypes ...string) FileValidatorFunc {
 
 	return func(file File) error {
 		fileMime := strings.ToLower(strings.TrimSpace(file.MimeType))
-		for _, allowed := range lower {
-			if fileMime == allowed {
-				return nil
-			}
+		if slices.Contains(lower, fileMime) {
+			return nil
 		}
 		return &ValidationError{
 			Field:   file.FieldName,
@@ -49,10 +48,8 @@ func ValidateFileExtension(allowedExts ...string) FileValidatorFunc {
 
 	return func(file File) error {
 		ext := strings.ToLower(filepath.Ext(file.OriginalName))
-		for _, allowed := range lower {
-			if ext == allowed {
-				return nil
-			}
+		if slices.Contains(lower, ext) {
+			return nil
 		}
 		return &ValidationError{
 			Field:   file.FieldName,
